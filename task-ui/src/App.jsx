@@ -1,5 +1,6 @@
 import { useAuthContext } from "@asgardeo/auth-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import "./App.css";
 
 const API = "http://localhost:9090/api";
 
@@ -8,27 +9,28 @@ function App() {
   const [user, setUser] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [title, setTitle] = useState("");
+  const [desc, setDesc] = useState("");
+  const [priority, setPriority] = useState("Medium");
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState("All");
   const [apiStatus, setApiStatus] = useState("checking...");
 
   useEffect(() => {
     if (state?.isAuthenticated) {
-      getBasicUserInfo().then(setUser).catch(console.error);
+      getBasicUserInfo().then(setUser).catch(() => {});
       loadTasks();
     }
   }, [state?.isAuthenticated]);
 
   useEffect(() => {
-    fetch(`${API}/health`).then(r => r.text()).then(setApiStatus).catch(() => setApiStatus("backend not running - start Ballerina on :9090"));
+    fetch(`${API}/health`).then(r => r.text()).then(setApiStatus).catch(() => setApiStatus("backend not running"));
   }, []);
 
   async function loadTasks() {
     try {
       const res = await fetch(`${API}/tasks`);
-      const data = await res.json();
-      setTasks(data);
-    } catch (e) {
-      console.error(e);
-    }
+      setTasks(await res.json());
+    } catch {}
   }
 
   async function addTask(e) {
@@ -37,18 +39,18 @@ function App() {
     const res = await fetch(`${API}/tasks`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title })
+      body: JSON.stringify({ title, description: desc, priority })
     });
     const created = await res.json();
     setTasks([...tasks, created]);
-    setTitle("");
+    setTitle(""); setDesc("");
   }
 
   async function toggleTask(t) {
     const res = await fetch(`${API}/tasks/${t.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: t.title, done: !t.done })
+      body: JSON.stringify({ title: t.title, description: t.description, priority: t.priority, done: !t.done })
     });
     const updated = await res.json();
     setTasks(tasks.map(x => x.id === t.id ? updated : x));
@@ -59,42 +61,92 @@ function App() {
     setTasks(tasks.filter(x => x.id !== id));
   }
 
+  const filtered = useMemo(() => {
+    return tasks.filter(t => {
+      const matchQ = (t.title + " " + (t.description || "")).toLowerCase().includes(query.toLowerCase());
+      const matchF = filter === "All" || (filter === "Done" ? t.done : !t.done);
+      return matchQ && matchF;
+    });
+  }, [tasks, query, filter]);
+
+  const doneCount = tasks.filter(t => t.done).length;
+
   if (!state?.isAuthenticated) {
     return (
-      <div style={{ maxWidth: 640, margin: "60px auto", fontFamily: "sans-serif", textAlign: "center" }}>
-        <h1>Secure Task Manager</h1>
-        <p>Built with <b>WSO2 Asgardeo</b> (auth + MFA) + <b>WSO2 Ballerina</b> (REST API) + React</p>
-        <p style={{ fontSize: 13, color: "#555" }}>Backend: {apiStatus}</p>
-        <button onClick={() => signIn()} style={{ padding: "12px 24px", fontSize: 16, cursor: "pointer" }}>
-          Sign In with Asgardeo
-        </button>
-        <p style={{ marginTop: 20, fontSize: 13 }}>New user? Use Sign In page self-registration. Email OTP MFA is enabled.</p>
+      <div className="page">
+        <div className="hero-login">
+          <div className="login-card">
+            <div className="badge">WSO2 ASGARDEO + BALLERINA PROJECT</div>
+            <h1>Secure Task Manager</h1>
+            <p className="sub">Enterprise login with Email OTP MFA + Ballerina REST API. Built for WSO2 Engineering Internship.</p>
+            <div className="stack"><span>React</span><span>Asgardeo OIDC</span><span>MFA</span><span>Ballerina API</span></div>
+            <button className="btn-primary" onClick={() => signIn()}>Sign In with Asgardeo</button>
+            <div className="fine">New here? Use self-registration on login page. Takes 30 seconds.</div>
+            <div className="status">API: {apiStatus}</div>
+          </div>
+        </div>
       </div>
     );
   }
 
+  const initial = (user?.username || user?.email || "F")[0].toUpperCase();
+
   return (
-    <div style={{ maxWidth: 640, margin: "30px auto", fontFamily: "sans-serif" }}>
-      <h1>Secure Task Manager</h1>
-      <p>Welcome <b>{user?.username || user?.email || "user"}</b> {user?.email ? `(${user.email})` : ""}</p>
-      <p style={{ fontSize: 13, color: "#555" }}>WSO2 Asgardeo authenticated + Email OTP MFA | Ballerina API: {apiStatus}</p>
-      <button onClick={() => signOut()}>Sign Out</button>
-      <hr />
-      <form onSubmit={addTask} style={{ margin: "20px 0" }}>
-        <input value={title} onChange={e => setTitle(e.target.value)} placeholder="New task title" style={{ padding: 8, width: "70%" }} />
-        <button type="submit" style={{ padding: 8, marginLeft: 8 }}>Add</button>
-      </form>
-      {tasks.length === 0 ? <p>No tasks yet. Add one above.</p> : (
-        <ul>
-          {tasks.map(t => (
-            <li key={t.id} style={{ marginBottom: 8 }}>
-              <input type="checkbox" checked={t.done} onChange={() => toggleTask(t)} />{" "}
-              <span style={{ textDecoration: t.done ? "line-through" : "none" }}>{t.title}</span>{" "}
-              <button onClick={() => deleteTask(t.id)} style={{ marginLeft: 8 }}>Delete</button>
-            </li>
+    <div className="page">
+      <div className="topbar">
+        <h2>Secure Task Manager</h2>
+        <div className="user-pill">
+          <div className="avatar">{initial}</div>
+          <span>{user?.username || user?.email || "user"}</span>
+          <button className="btn-ghost" onClick={() => signOut()}>Sign Out</button>
+        </div>
+      </div>
+
+      <div className="container">
+        <div className="stats">
+          <div className="stat"><b>{tasks.length}</b><span>Total tasks</span></div>
+          <div className="stat"><b>{doneCount}</b><span>Completed</span></div>
+          <div className="stat"><b>{tasks.length - doneCount}</b><span>Pending</span></div>
+        </div>
+
+        <div className="add-card">
+          <form onSubmit={addTask}>
+            <div className="add-row">
+              <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="What needs to be done? e.g. Prepare WSO2 demo" />
+              <select value={priority} onChange={e => setPriority(e.target.value)}>
+                <option>High</option><option>Medium</option><option>Low</option>
+              </select>
+              <button className="btn-add" type="submit">+ Add Task</button>
+            </div>
+            <div className="add-row" style={{ marginTop: 8 }}>
+              <input type="text" value={desc} onChange={e => setDesc(e.target.value)} placeholder="Description (optional) — e.g. API + auth + screenshots for internship" />
+            </div>
+          </form>
+        </div>
+
+        <div className="toolbar">
+          <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search tasks..." />
+          {["All", "Pending", "Done"].map(f => (
+            <button key={f} className={filter === f ? "chip active" : "chip"} onClick={() => setFilter(f)}>{f}</button>
           ))}
-        </ul>
-      )}
+        </div>
+
+        <div className="task-list">
+          {filtered.length === 0 ? <div className="empty">No tasks found. Add your first task above to impress WSO2.</div> :
+            filtered.map(t => (
+              <div key={t.id} className={t.done ? "task done" : "task"}>
+                <input type="checkbox" className="task-check" checked={t.done} onChange={() => toggleTask(t)} />
+                <div className="task-body">
+                  <div className="task-title">{t.title}<span className={`pri ${t.priority}`}>{t.priority}</span></div>
+                  {t.description && <div className="task-desc">{t.description}</div>}
+                </div>
+                <button className="btn-del" onClick={() => deleteTask(t.id)}>Delete</button>
+              </div>
+            ))}
+        </div>
+
+        <div className="footer">Secured by WSO2 Asgardeo (OIDC + Email OTP MFA) • API by WSO2 Ballerina • {apiStatus}</div>
+      </div>
     </div>
   );
 }
